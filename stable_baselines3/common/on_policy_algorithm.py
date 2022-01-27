@@ -127,11 +127,7 @@ class OnPolicyAlgorithm(BaseAlgorithm):
         self.policy = self.policy.to(self.device)
 
     def collect_rollouts(
-        self,
-        env: VecEnv,
-        callback: BaseCallback,
-        rollout_buffer: RolloutBuffer,
-        n_rollout_steps: int,
+        self, env: VecEnv, callback: BaseCallback, rollout_buffer: RolloutBuffer, n_rollout_steps: int,
     ) -> bool:
         """
         Collect experiences using the current policy and fill a ``RolloutBuffer``.
@@ -240,14 +236,23 @@ class OnPolicyAlgorithm(BaseAlgorithm):
         iteration = 0
 
         total_timesteps, callback = self._setup_learn(
-            total_timesteps, eval_env, callback, eval_freq, n_eval_episodes, eval_log_path, reset_num_timesteps, tb_log_name
+            total_timesteps,
+            eval_env,
+            callback,
+            eval_freq,
+            n_eval_episodes,
+            eval_log_path,
+            reset_num_timesteps,
+            tb_log_name,
         )
 
         callback.on_training_start(locals(), globals())
 
         while self.num_timesteps < total_timesteps:
 
-            continue_training = self.collect_rollouts(self.env, callback, self.rollout_buffer, n_rollout_steps=self.n_steps)
+            continue_training = self.collect_rollouts(
+                self.env, callback, self.rollout_buffer, n_rollout_steps=self.n_steps
+            )
 
             if continue_training is False:
                 break
@@ -260,8 +265,26 @@ class OnPolicyAlgorithm(BaseAlgorithm):
                 fps = int((self.num_timesteps - self._num_timesteps_at_start) / (time.time() - self.start_time))
                 self.logger.record("time/iterations", iteration, exclude="tensorboard")
                 if len(self.ep_info_buffer) > 0 and len(self.ep_info_buffer[0]) > 0:
-                    self.logger.record("rollout/ep_rew_mean", safe_mean([ep_info["r"] for ep_info in self.ep_info_buffer]))
-                    self.logger.record("rollout/ep_len_mean", safe_mean([ep_info["l"] for ep_info in self.ep_info_buffer]))
+                    for k in self.ep_info_buffer[0].keys():
+                        if k == "t":
+                            continue
+                        if k == "r":
+                            name = "ep_rew_mean"
+                        elif k == "l":
+                            name = "ep_len_mean"
+                        else:
+                            name = "ep_" + k + "_mean"
+
+                        self.logger.record(
+                            "rollout/" + name, safe_mean([ep_info[k] for ep_info in self.ep_info_buffer])
+                        )
+                    # self.logger.record(
+                    #     "rollout/ep_rew_mean", safe_mean([ep_info["r"] for ep_info in self.ep_info_buffer])
+                    # )
+                    # self.logger.record(
+                    #     "rollout/ep_len_mean", safe_mean([ep_info["l"] for ep_info in self.ep_info_buffer])
+                    # )
+
                 self.logger.record("time/fps", fps)
                 self.logger.record("time/time_elapsed", int(time.time() - self.start_time), exclude="tensorboard")
                 self.logger.record("time/total_timesteps", self.num_timesteps, exclude="tensorboard")

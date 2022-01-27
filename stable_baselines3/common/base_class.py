@@ -18,8 +18,17 @@ from stable_baselines3.common.logger import Logger
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.noise import ActionNoise
 from stable_baselines3.common.policies import BasePolicy, get_policy_from_name
-from stable_baselines3.common.preprocessing import check_for_nested_spaces, is_image_space, is_image_space_channels_first
-from stable_baselines3.common.save_util import load_from_zip_file, recursive_getattr, recursive_setattr, save_to_zip_file
+from stable_baselines3.common.preprocessing import (
+    check_for_nested_spaces,
+    is_image_space,
+    is_image_space_channels_first,
+)
+from stable_baselines3.common.save_util import (
+    load_from_zip_file,
+    recursive_getattr,
+    recursive_setattr,
+    save_to_zip_file,
+)
 from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, Schedule
 from stable_baselines3.common.utils import (
     check_for_correct_spaces,
@@ -180,10 +189,14 @@ class BaseAlgorithm(ABC):
 
             # Catch common mistake: using MlpPolicy/CnnPolicy instead of MultiInputPolicy
             if policy in ["MlpPolicy", "CnnPolicy"] and isinstance(self.observation_space, gym.spaces.Dict):
-                raise ValueError(f"You must use `MultiInputPolicy` when working with dict observation space, not {policy}")
+                raise ValueError(
+                    f"You must use `MultiInputPolicy` when working with dict observation space, not {policy}"
+                )
 
             if self.use_sde and not isinstance(self.action_space, gym.spaces.Box):
-                raise ValueError("generalized State-Dependent Exploration (gSDE) can only be used with continuous actions.")
+                raise ValueError(
+                    "generalized State-Dependent Exploration (gSDE) can only be used with continuous actions."
+                )
 
     @staticmethod
     def _wrap_env(env: GymEnv, verbose: int = 0, monitor_wrapper: bool = True) -> VecEnv:
@@ -456,11 +469,19 @@ class BaseAlgorithm(ABC):
         """
         if dones is None:
             dones = np.array([False] * len(infos))
+
         for idx, info in enumerate(infos):
             maybe_ep_info = info.get("episode")
+            if "rollout" in info:
+                for k, v in info["rollout"].items():
+                    if k in ["obs", "rews"]:
+                        continue
+                    maybe_ep_info[k] = v
+
             maybe_is_success = info.get("is_success")
             if maybe_ep_info is not None:
                 self.ep_info_buffer.extend([maybe_ep_info])
+
             if maybe_is_success is not None and dones[idx]:
                 self.ep_success_buffer.append(maybe_is_success)
 
