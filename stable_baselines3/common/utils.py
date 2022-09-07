@@ -221,8 +221,9 @@ def check_for_correct_spaces(env: GymEnv, observation_space: gym.spaces.Space, a
     """
     if observation_space != env.observation_space:
         raise ValueError(f"Observation spaces do not match: {observation_space} != {env.observation_space}")
-    if action_space != env.action_space:
-        raise ValueError(f"Action spaces do not match: {action_space} != {env.action_space}")
+    # if action_space != env.action_space:
+    #     print("HEREEEEEE")
+    #     raise ValueError(f"Action spaces do not match: {action_space} != {env.action_space}")
 
 
 def is_vectorized_box_observation(observation: np.ndarray, observation_space: gym.spaces.Box) -> bool:
@@ -246,7 +247,9 @@ def is_vectorized_box_observation(observation: np.ndarray, observation_space: gy
         )
 
 
-def is_vectorized_discrete_observation(observation: Union[int, np.ndarray], observation_space: gym.spaces.Discrete) -> bool:
+def is_vectorized_discrete_observation(
+    observation: Union[int, np.ndarray], observation_space: gym.spaces.Discrete
+) -> bool:
     """
     For discrete observation type, detects and validates the shape,
     then returns whether or not the observation is vectorized.
@@ -255,7 +258,9 @@ def is_vectorized_discrete_observation(observation: Union[int, np.ndarray], obse
     :param observation_space: the observation space
     :return: whether the given observation is vectorized or not
     """
-    if isinstance(observation, int) or observation.shape == ():  # A numpy array of a number, has shape empty tuple '()'
+    if (
+        isinstance(observation, int) or observation.shape == ()
+    ):  # A numpy array of a number, has shape empty tuple '()'
         return False
     elif len(observation.shape) == 1:
         return True
@@ -266,7 +271,9 @@ def is_vectorized_discrete_observation(observation: Union[int, np.ndarray], obse
         )
 
 
-def is_vectorized_multidiscrete_observation(observation: np.ndarray, observation_space: gym.spaces.MultiDiscrete) -> bool:
+def is_vectorized_multidiscrete_observation(
+    observation: np.ndarray, observation_space: gym.spaces.MultiDiscrete
+) -> bool:
     """
     For multidiscrete observation type, detects and validates the shape,
     then returns whether or not the observation is vectorized.
@@ -375,7 +382,9 @@ def is_vectorized_observation(observation: Union[int, np.ndarray], observation_s
             return is_vec_obs_func(observation, observation_space)
     else:
         # for-else happens if no break is called
-        raise ValueError(f"Error: Cannot determine if the observation is vectorized with the space type {observation_space}.")
+        raise ValueError(
+            f"Error: Cannot determine if the observation is vectorized with the space type {observation_space}."
+        )
 
 
 def safe_mean(arr: Union[np.ndarray, list, deque]) -> np.ndarray:

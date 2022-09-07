@@ -117,8 +117,10 @@ class VecNormalize(VecEnvWrapper):
 
         :param state:"""
         # Backward compatibility
-        if "norm_obs_keys" not in state:
+        if "norm_obs_keys" not in state and isinstance(state["observation_space"], gym.spaces.Dict):
             state["norm_obs_keys"] = list(state["observation_space"].spaces.keys())
+        else:
+            state["norm_obs_keys"] = None
         self.__dict__.update(state)
         assert "venv" not in state
         self.venv = None
@@ -221,7 +223,9 @@ class VecNormalize(VecEnvWrapper):
             reward = np.clip(reward / np.sqrt(self.ret_rms.var + self.epsilon), -self.clip_reward, self.clip_reward)
         return reward
 
-    def unnormalize_obs(self, obs: Union[np.ndarray, Dict[str, np.ndarray]]) -> Union[np.ndarray, Dict[str, np.ndarray]]:
+    def unnormalize_obs(
+        self, obs: Union[np.ndarray, Dict[str, np.ndarray]]
+    ) -> Union[np.ndarray, Dict[str, np.ndarray]]:
         # Avoid modifying by reference the original object
         obs_ = deepcopy(obs)
         if self.norm_obs:
@@ -292,5 +296,7 @@ class VecNormalize(VecEnvWrapper):
 
     @property
     def ret(self) -> np.ndarray:
-        warnings.warn("`VecNormalize` `ret` attribute is deprecated. Please use `returns` instead.", DeprecationWarning)
+        warnings.warn(
+            "`VecNormalize` `ret` attribute is deprecated. Please use `returns` instead.", DeprecationWarning
+        )
         return self.returns
