@@ -17,7 +17,7 @@ from stable_baselines3.common.env_util import is_wrapped
 from stable_baselines3.common.logger import Logger
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.noise import ActionNoise
-from stable_baselines3.common.policies import BasePolicy, get_policy_from_name
+from stable_baselines3.common.policies import BasePolicy
 from stable_baselines3.common.preprocessing import (
     check_for_nested_spaces,
     is_image_space,
@@ -52,7 +52,7 @@ def maybe_make_env(env: Union[GymEnv, str, None], verbose: int) -> Optional[GymE
     """If env is a string, make the environment; otherwise, return env.
 
     :param env: The environment to learn from.
-    :param verbose: logging verbosity
+    :param verbose: Verbosity level: 0 for no output, 1 for indicating if envrironment is created
     :return A Gym (vector) environment.
     """
     if isinstance(env, str):
@@ -69,12 +69,12 @@ class BaseAlgorithm(ABC):
     :param policy: Policy object
     :param env: The environment to learn from
                 (if registered in Gym, can be str. Can be None for loading trained models)
-    :param policy_base: The base policy used by this method
     :param learning_rate: learning rate for the optimizer,
         it can be a function of the current progress remaining (from 1 to 0)
     :param policy_kwargs: Additional arguments to be passed to the policy on creation
     :param tensorboard_log: the log location for tensorboard (if None, no logging)
-    :param verbose: The verbosity level: 0 none, 1 training information, 2 debug
+    :param verbose: Verbosity level: 0 for no output, 1 for info messages (such as device or wrappers used), 2 for
+        debug messages
     :param device: Device on which the code should run.
         By default, it will try to use a Cuda compatible device and fallback to cpu
         if it is not possible.
@@ -92,11 +92,13 @@ class BaseAlgorithm(ABC):
     :param supported_action_spaces: The action spaces supported by the algorithm.
     """
 
+    # Policy aliases (see _get_policy_from_name())
+    policy_aliases: Dict[str, Type[BasePolicy]] = {}
+
     def __init__(
         self,
         policy: Type[BasePolicy],
         env: Union[GymEnv, str, None],
-        policy_base: Type[BasePolicy],
         learning_rate: Union[float, Schedule],
         policy_kwargs: Optional[Dict[str, Any]] = None,
         tensorboard_log: Optional[str] = None,
@@ -110,14 +112,13 @@ class BaseAlgorithm(ABC):
         sde_sample_freq: int = -1,
         supported_action_spaces: Optional[Tuple[gym.spaces.Space, ...]] = None,
     ):
-
-        if isinstance(policy, str) and policy_base is not None:
-            self.policy_class = get_policy_from_name(policy_base, policy)
+        if isinstance(policy, str):
+            self.policy_class = self._get_policy_from_name(policy)
         else:
             self.policy_class = policy
 
         self.device = get_device(device)
-        if verbose > 0:
+        if verbose >= 1:
             print(f"Using {self.device} device")
 
         self.env = None  # type: Optional[GymEnv]
@@ -198,6 +199,11 @@ class BaseAlgorithm(ABC):
                     "generalized State-Dependent Exploration (gSDE) can only be used with continuous actions."
                 )
 
+            if isinstance(self.action_space, gym.spaces.Box):
+                assert np.all(
+                    np.isfinite(np.array([self.action_space.low, self.action_space.high]))
+                ), "Continuous action space must have a finite lower and upper bound"
+
     @staticmethod
     def _wrap_env(env: GymEnv, verbose: int = 0, monitor_wrapper: bool = True) -> VecEnv:
         """ "
@@ -206,7 +212,7 @@ class BaseAlgorithm(ABC):
         or to re-order the image channels.
 
         :param env:
-        :param verbose:
+        :param verbose: Verbosity level: 0 for no output, 1 for indicating wrappers used
         :param monitor_wrapper: Whether to wrap the env in a ``Monitor`` when possible.
         :return: The wrapped environment.
         """
@@ -221,11 +227,6 @@ class BaseAlgorithm(ABC):
 
         # Make sure that dict-spaces are not nested (not supported)
         check_for_nested_spaces(env.observation_space)
-
-        if isinstance(env.observation_space, gym.spaces.Dict):
-            for space in env.observation_space.spaces.values():
-                if isinstance(space, gym.spaces.Dict):
-                    raise ValueError("Nested observation spaces are not supported (Dict spaces inside Dict space).")
 
         if not is_vecenv_wrapped(env, VecTransposeImage):
             wrap_with_vectranspose = False
@@ -338,6 +339,23 @@ class BaseAlgorithm(ABC):
             "_custom_logger",
         ]
 
+    def _get_policy_from_name(self, policy_name: str) -> Type[BasePolicy]:
+        """
+        Get a policy class from its name representation.
+
+        The goal here is to standardize policy naming, e.g.
+        all algorithms can call upon "MlpPolicy" or "CnnPolicy",
+        and they receive respective policies that work for them.
+
+        :param policy_name: Alias of the policy
+        :return: A policy class (type)
+        """
+
+        if policy_name in self.policy_aliases:
+            return self.policy_aliases[policy_name]
+        else:
+            raise ValueError(f"Policy {policy_name} unknown")
+
     def _get_torch_save_params(self) -> Tuple[List[str], List[str]]:
         """
         Get the name of the torch variables that will be saved with
@@ -388,6 +406,7 @@ class BaseAlgorithm(ABC):
                 log_path=log_path,
                 eval_freq=eval_freq,
                 n_eval_episodes=n_eval_episodes,
+                verbose=self.verbose,
             )
             callback = CallbackList([callback, eval_callback])
 
@@ -418,7 +437,7 @@ class BaseAlgorithm(ABC):
         :param tb_log_name: the name of the run for tensorboard log
         :return:
         """
-        self.start_time = time.time()
+        self.start_time = time.time_ns()
 
         if self.ep_info_buffer is None or reset_num_timesteps:
             # Initialize buffers if they don't exist, or reinitialize if resetting counters
@@ -518,6 +537,11 @@ class BaseAlgorithm(ABC):
         # if it is not a VecEnv, make it a VecEnv
         # and do other transformations (dict obs, image transpose) if needed
         env = self._wrap_env(env, self.verbose)
+        assert env.num_envs == self.n_envs, (
+            "The number of environments to be set is different from the number of environments in the model: "
+            f"({env.num_envs} != {self.n_envs}), whereas `set_env` requires them to be the same. To load a model with "
+            f"a different number of environments, you must use `{self.__class__.__name__}.load(path, env)` instead"
+        )
         # Check that the observation spaces match
         check_for_correct_spaces(env, self.observation_space, self.action_space)
         # Update VecNormalize object
@@ -632,11 +656,11 @@ class BaseAlgorithm(ABC):
             attr = None
             try:
                 attr = recursive_getattr(self, name)
-            except Exception:
+            except Exception as e:
                 # What errors recursive_getattr could throw? KeyError, but
                 # possible something else too (e.g. if key is an int?).
                 # Catch anything for now.
-                raise ValueError(f"Key {name} is an invalid object name.")
+                raise ValueError(f"Key {name} is an invalid object name.") from e
 
             if isinstance(attr, th.optim.Optimizer):
                 # Optimizers do not support "strict" keyword...
@@ -678,7 +702,9 @@ class BaseAlgorithm(ABC):
         **kwargs,
     ) -> "BaseAlgorithm":
         """
-        Load the model from a zip-file
+        Load the model from a zip-file.
+        Warning: ``load`` re-creates the model from scratch, it does not update it in-place!
+        For an in-place load use ``set_parameters`` instead.
 
         :param path: path to the file (or a file-like) where to
             load the agent from
@@ -697,6 +723,7 @@ class BaseAlgorithm(ABC):
             to avoid unexpected behavior.
             See https://github.com/DLR-RM/stable-baselines3/issues/597
         :param kwargs: extra arguments to change the model when loading
+        :return: new model instance with loaded parameters
         """
         if print_system_info:
             print("== CURRENT SYSTEM INFO ==")
@@ -729,6 +756,9 @@ class BaseAlgorithm(ABC):
             # See issue https://github.com/DLR-RM/stable-baselines3/issues/597
             if force_reset and data is not None:
                 data["_last_obs"] = None
+            # `n_envs` must be updated. See issue https://github.com/DLR-RM/stable-baselines3/issues/1018
+            if data is not None:
+                data["n_envs"] = env.num_envs
         else:
             # Use stored env, if one exists. If not, continue as is (can be used for predict)
             if "env" in data:

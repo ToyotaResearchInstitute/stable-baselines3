@@ -95,9 +95,10 @@ that derives from ``BaseFeaturesExtractor`` and then pass it to the model when t
 .. note::
 
   By default the feature extractor is shared between the actor and the critic to save computation (when applicable).
-  However, this can be changed by defining a custom policy for on-policy algorithms or setting
-  ``share_features_extractor=False`` in the ``policy_kwargs`` for off-policy algorithms
-  (and when applicable).
+  However, this can be changed by defining a custom policy for on-policy algorithms
+  (see `issue #1066 <https://github.com/DLR-RM/stable-baselines3/issues/1066#issuecomment-1246866844>`_
+  for more information) or setting ``share_features_extractor=False`` in the
+  ``policy_kwargs`` for off-policy algorithms (and when applicable).
 
 
 .. code-block:: python
@@ -333,6 +334,12 @@ If your task requires even more granular control over the policy/value architect
               If all layers are shared, then ``latent_policy == latent_value``
           """
           return self.policy_net(features), self.value_net(features)
+          
+      def forward_actor(self, features: th.Tensor) -> th.Tensor:
+          return self.policy_net(features)
+      
+      def forward_critic(self, features: th.Tensor) -> th.Tensor:
+          return self.value_net(features)
 
 
   class CustomActorCriticPolicy(ActorCriticPolicy):
@@ -401,5 +408,5 @@ you only need to specify ``net_arch=[256, 256]`` (here, two hidden layers of 256
   # Custom critic architecture with two layers of 400 and 300 units
   policy_kwargs = dict(net_arch=dict(pi=[64, 64], qf=[400, 300]))
   # Create the agent
-  model = SAC("MlpPolicy", "Pendulum-v0", policy_kwargs=policy_kwargs, verbose=1)
+  model = SAC("MlpPolicy", "Pendulum-v1", policy_kwargs=policy_kwargs, verbose=1)
   model.learn(5000)

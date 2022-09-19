@@ -56,10 +56,11 @@ In the following example, we will train, save and load a DQN model on the Lunar 
   LunarLander requires the python package ``box2d``.
   You can install it using ``apt install swig`` and then ``pip install box2d box2d-kengz``
 
-.. .. note::
-..   ``load`` function re-creates model from scratch on each call, which can be slow.
-..   If you need to e.g. evaluate same model with multiple different sets of parameters, consider
-..   using ``load_parameters`` instead.
+.. warning::
+  ``load`` method re-creates the model from scratch and should be called on the Algorithm without instantiating it first,
+  e.g. ``model = DQN.load("dqn_lunar", env=env)`` instead of ``model = DQN(env=env)`` followed by  ``model.load("dqn_lunar")``. The latter **will not work** as ``load`` is not an in-place operation.
+  If you want to load parameters without re-creating the model, e.g. to evaluate the same model
+  with multiple different sets of parameters, consider using ``set_parameters`` instead.
 
 .. code-block:: python
 
@@ -162,7 +163,7 @@ Multiprocessing with off-policy algorithms
 ------------------------------------------
 
 .. warning::
-  
+
   When using multiple environments with off-policy algorithms, you should update the ``gradient_steps``
   parameter too. Set it to ``gradient_steps=-1`` to perform as many gradient steps as transitions collected.
   There is usually a compromise between wall-clock time and sample efficiency,
@@ -247,7 +248,7 @@ If your callback returns False, training is aborted early.
       :param check_freq:
       :param log_dir: Path to the folder where the model will be saved.
         It must contains the file created by the ``Monitor`` wrapper.
-      :param verbose: Verbosity level.
+      :param verbose: Verbosity level: 0 for no output, 1 for info messages, 2 for debug messages
       """
       def __init__(self, check_freq: int, log_dir: str, verbose: int = 1):
           super(SaveOnBestTrainingRewardCallback, self).__init__(verbose)
@@ -269,7 +270,7 @@ If your callback returns False, training is aborted early.
             if len(x) > 0:
                 # Mean training reward over the last 100 episodes
                 mean_reward = np.mean(y[-100:])
-                if self.verbose > 0:
+                if self.verbose >= 1:
                   print(f"Num timesteps: {self.num_timesteps}")
                   print(f"Best mean reward: {self.best_mean_reward:.2f} - Last mean reward per episode: {mean_reward:.2f}")
 
@@ -277,7 +278,7 @@ If your callback returns False, training is aborted early.
                 if mean_reward > self.best_mean_reward:
                     self.best_mean_reward = mean_reward
                     # Example for saving best model
-                    if self.verbose > 0:
+                    if self.verbose >= 1:
                       print(f"Saving new best model to {self.save_path}")
                     self.model.save(self.save_path)
 
@@ -320,7 +321,7 @@ Atari Games
 
 Training a RL agent on Atari games is straightforward thanks to ``make_atari_env`` helper function.
 It will do `all the preprocessing <https://danieltakeshi.github.io/2016/11/25/frame-skipping-and-preprocessing-for-deep-q-networks-on-atari-2600-games/>`_
-and multiprocessing for you.
+and multiprocessing for you. To install the Atari environments, run the command ``pip install gym[atari, accept-rom-license]`` to install the Atari environments and ROMs, or install Stable Baselines3 with ``pip install stable-baselines3[extra]`` to install this and other optional dependencies.
 
 .. image:: ../_static/img/colab-badge.svg
    :target: https://colab.research.google.com/github/Stable-Baselines-Team/rl-colab-notebooks/blob/sb3/atari_games.ipynb
@@ -563,7 +564,7 @@ Behind the scene, SB3 uses an :ref:`EvalCallback <callbacks>`.
 
   # Create the model, the training environment
   # and the test environment (for evaluation)
-  model = SAC('MlpPolicy', 'Pendulum-v0', verbose=1,
+  model = SAC('MlpPolicy', 'Pendulum-v1', verbose=1,
               learning_rate=1e-3, create_eval_env=True)
 
   # Evaluate the model every 1000 steps on 5 test episodes
@@ -726,6 +727,16 @@ to keep track of the agent progress.
 
   model = PPO("MultiInputPolicy", venv, verbose=1)
   model.learn(10_000)
+
+
+SB3 with EnvPool or Isaac Gym
+-----------------------------
+
+Just like Procgen (see above), `EnvPool <https://github.com/sail-sg/envpool>`_ and `Isaac Gym <https://github.com/NVIDIA-Omniverse/IsaacGymEnvs>`_ accelerate the environment by
+already providing a vectorized implementation.
+
+To use SB3 with those tools, you must wrap the env with tool's specific ``VecEnvWrapper`` that will pre-process the data for SB3,
+you can find links to those wrappers in `issue #772 <https://github.com/DLR-RM/stable-baselines3/issues/772#issuecomment-1048657002>`_.
 
 
 Record a Video

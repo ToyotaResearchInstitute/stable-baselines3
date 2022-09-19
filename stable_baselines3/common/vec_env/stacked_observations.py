@@ -7,7 +7,7 @@ from gym import spaces
 from stable_baselines3.common.preprocessing import is_image_space, is_image_space_channels_first
 
 
-class StackedObservations(object):
+class StackedObservations:
     """
     Frame stacking wrapper for data.
 
@@ -126,7 +126,7 @@ class StackedObservations(object):
                     if self.channels_first:
                         new_terminal = np.concatenate(
                             (self.stackedobs[i, :-stack_ax_size, ...], old_terminal),
-                            axis=self.stack_dimension,
+                            axis=0,  # self.stack_dimension - 1, as there is not batch dim
                         )
                     else:
                         new_terminal = np.concatenate(

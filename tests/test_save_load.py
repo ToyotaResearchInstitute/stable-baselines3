@@ -64,7 +64,7 @@ def test_save_load(tmp_path, model_class):
         model.set_parameters(invalid_object_params, exact_match=False)
 
     # Test that exact_match catches when something was missed.
-    missing_object_params = dict((k, v) for k, v in list(original_params.items())[:-1])
+    missing_object_params = {k: v for k, v in list(original_params.items())[:-1]}
     with pytest.raises(ValueError):
         model.set_parameters(missing_object_params, exact_match=True)
 
@@ -174,6 +174,7 @@ def test_set_env(tmp_path, model_class):
     env = DummyVecEnv([lambda: select_env(model_class)])
     env2 = DummyVecEnv([lambda: select_env(model_class)])
     env3 = select_env(model_class)
+    env4 = DummyVecEnv([lambda: select_env(model_class) for _ in range(2)])
 
     kwargs = {}
     if model_class in {DQN, DDPG, SAC, TD3}:
@@ -199,6 +200,10 @@ def test_set_env(tmp_path, model_class):
     # learn again
     model.learn(total_timesteps=64)
 
+    # num_env must be the same
+    with pytest.raises(AssertionError):
+        model.set_env(env4)
+
     # Keep the same env, disable reset
     model.set_env(model.get_env(), force_reset=False)
     assert model._last_obs is not None
@@ -222,6 +227,11 @@ def test_set_env(tmp_path, model_class):
     assert model._last_obs is None
     model.learn(total_timesteps=64, reset_num_timesteps=False)
     assert model.num_timesteps == 3 * 64
+
+    del model
+    # Load the model with a different number of environments
+    model = model_class.load(tmp_path / "test_save.zip", env=env4)
+    model.learn(total_timesteps=64)
 
     # Clear saved file
     os.remove(tmp_path / "test_save.zip")
@@ -269,7 +279,7 @@ def test_exclude_include_saved_params(tmp_path, model_class):
 
 
 def test_save_load_pytorch_var(tmp_path):
-    model = SAC("MlpPolicy", "Pendulum-v0", seed=3, policy_kwargs=dict(net_arch=[64], n_critics=1))
+    model = SAC("MlpPolicy", "Pendulum-v1", seed=3, policy_kwargs=dict(net_arch=[64], n_critics=1))
     model.learn(200)
     save_path = str(tmp_path / "sac_pendulum")
     model.save(save_path)
@@ -286,7 +296,7 @@ def test_save_load_pytorch_var(tmp_path):
     assert not th.allclose(log_ent_coef_before, log_ent_coef_after)
 
     # With a fixed entropy coef
-    model = SAC("MlpPolicy", "Pendulum-v0", seed=3, ent_coef=0.01, policy_kwargs=dict(net_arch=[64], n_critics=1))
+    model = SAC("MlpPolicy", "Pendulum-v1", seed=3, ent_coef=0.01, policy_kwargs=dict(net_arch=[64], n_critics=1))
     model.learn(200)
     save_path = str(tmp_path / "sac_pendulum")
     model.save(save_path)
@@ -375,6 +385,9 @@ def test_warn_buffer(recwarn, model_class, optimize_memory_usage):
         select_env(model_class),
         buffer_size=100,
         optimize_memory_usage=optimize_memory_usage,
+        # we cannot use optimize_memory_usage and handle_timeout_termination
+        # at the same time
+        replay_buffer_kwargs={"handle_timeout_termination": not optimize_memory_usage},
         policy_kwargs=dict(net_arch=[64]),
         learning_starts=10,
     )
@@ -446,7 +459,7 @@ def test_save_load_policy(tmp_path, model_class, policy_str, use_sde):
     params = deepcopy(policy.state_dict())
 
     # Modify all parameters to be random values
-    random_params = dict((param_name, th.rand_like(param)) for param_name, param in params.items())
+    random_params = {param_name: th.rand_like(param) for param_name, param in params.items()}
 
     # Update model parameters with the new random values
     policy.load_state_dict(random_params)
@@ -537,7 +550,7 @@ def test_save_load_q_net(tmp_path, model_class, policy_str):
     params = deepcopy(q_net.state_dict())
 
     # Modify all parameters to be random values
-    random_params = dict((param_name, th.rand_like(param)) for param_name, param in params.items())
+    random_params = {param_name: th.rand_like(param) for param_name, param in params.items()}
 
     # Update model parameters with the new random values
     q_net.load_state_dict(random_params)
@@ -580,7 +593,7 @@ def test_open_file_str_pathlib(tmp_path, pathtype):
     with open_path(pathtype(f"{tmp_path}/t1"), "w") as fp1:
         save_to_pkl(fp1, "foo")
     assert fp1.closed
-    with pytest.warns(None) as record:
+    with warnings.catch_warnings(record=True) as record:
         assert load_from_pkl(pathtype(f"{tmp_path}/t1")) == "foo"
     assert not record
 
@@ -588,7 +601,7 @@ def test_open_file_str_pathlib(tmp_path, pathtype):
     with open_path(pathtype(f"{tmp_path}/t1.custom_ext"), "w") as fp1:
         save_to_pkl(fp1, "foo")
     assert fp1.closed
-    with pytest.warns(None) as record:
+    with warnings.catch_warnings(record=True) as record:
         assert load_from_pkl(pathtype(f"{tmp_path}/t1.custom_ext")) == "foo"
     assert not record
 
@@ -596,7 +609,7 @@ def test_open_file_str_pathlib(tmp_path, pathtype):
     with open_path(pathtype(f"{tmp_path}/t1"), "w", suffix="pkl") as fp1:
         save_to_pkl(fp1, "foo")
     assert fp1.closed
-    with pytest.warns(None) as record:
+    with warnings.catch_warnings(record=True) as record:
         assert load_from_pkl(pathtype(f"{tmp_path}/t1.pkl")) == "foo"
     assert not record
 
@@ -604,11 +617,11 @@ def test_open_file_str_pathlib(tmp_path, pathtype):
     with open_path(pathtype(f"{tmp_path}/t2.pkl"), "w") as fp1:
         save_to_pkl(fp1, "foo")
     assert fp1.closed
-    with pytest.warns(None) as record:
+    with warnings.catch_warnings(record=True) as record:
         assert load_from_pkl(open_path(pathtype(f"{tmp_path}/t2"), "r", suffix="pkl")) == "foo"
     assert len(record) == 0
 
-    with pytest.warns(None) as record:
+    with warnings.catch_warnings(record=True) as record:
         assert load_from_pkl(open_path(pathtype(f"{tmp_path}/t2"), "r", suffix="pkl", verbose=2)) == "foo"
     assert len(record) == 1
 
@@ -616,7 +629,7 @@ def test_open_file_str_pathlib(tmp_path, pathtype):
     fp.write("rubbish")
     fp.close()
     # test that a warning is only raised when verbose = 0
-    with pytest.warns(None) as record:
+    with warnings.catch_warnings(record=True) as record:
         open_path(pathtype(f"{tmp_path}/t2"), "w", suffix="pkl", verbose=0).close()
         open_path(pathtype(f"{tmp_path}/t2"), "w", suffix="pkl", verbose=1).close()
         open_path(pathtype(f"{tmp_path}/t2"), "w", suffix="pkl", verbose=2).close()
@@ -656,3 +669,24 @@ def test_open_file(tmp_path):
     with pytest.raises(ValueError):
         buff.close()
         open_path(buff, "w")
+
+
+@pytest.mark.expensive
+def test_save_load_large_model(tmp_path):
+    """
+    Test saving and loading a model with a large policy that is greater than 2GB. We
+    test only one algorithm since all algorithms share the same code for loading and
+    saving the model.
+    """
+    env = select_env(TD3)
+    kwargs = dict(policy_kwargs=dict(net_arch=[8192, 8192, 8192]), device="cpu")
+    model = TD3("MlpPolicy", env, **kwargs)
+
+    # test saving
+    model.save(tmp_path / "test_save")
+
+    # test loading
+    model = TD3.load(str(tmp_path / "test_save.zip"), env=env, **kwargs)
+
+    # clear file from os
+    os.remove(tmp_path / "test_save.zip")
