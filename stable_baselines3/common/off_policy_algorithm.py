@@ -16,7 +16,14 @@ from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.noise import ActionNoise, VectorizedActionNoise
 from stable_baselines3.common.policies import BasePolicy
 from stable_baselines3.common.save_util import load_from_pkl, save_to_pkl
-from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, RolloutReturn, Schedule, TrainFreq, TrainFrequencyUnit
+from stable_baselines3.common.type_aliases import (
+    GymEnv,
+    MaybeCallback,
+    RolloutReturn,
+    Schedule,
+    TrainFreq,
+    TrainFrequencyUnit,
+)
 from stable_baselines3.common.utils import safe_mean, should_collect_more_steps
 from stable_baselines3.common.vec_env import VecEnv
 from stable_baselines3.her.her_replay_buffer import HerReplayBuffer
@@ -140,8 +147,9 @@ class OffPolicyAlgorithm(BaseAlgorithm):
         self.actor = None  # type: Optional[th.nn.Module]
         self.replay_buffer = None  # type: Optional[ReplayBuffer]
         # Update policy keyword arguments
-        if sde_support:
-            self.policy_kwargs["use_sde"] = self.use_sde
+        # commented the following if block because sacred throws a "read-only" error.
+        # if sde_support:
+        #     self.policy_kwargs["use_sde"] = self.use_sde
         # For gSDE only
         self.use_sde_at_warmup = use_sde_at_warmup
 
@@ -358,6 +366,7 @@ class OffPolicyAlgorithm(BaseAlgorithm):
             if rollout.continue_training is False:
                 break
 
+            print("FINISH COLLECT ROLLOUTS")
             if self.num_timesteps > 0 and self.num_timesteps > self.learning_starts:
                 # If no `gradient_steps` is specified,
                 # do as many gradients steps as steps performed during the rollout
@@ -433,8 +442,19 @@ class OffPolicyAlgorithm(BaseAlgorithm):
         fps = int((self.num_timesteps - self._num_timesteps_at_start) / time_elapsed)
         self.logger.record("time/episodes", self._episode_num, exclude="tensorboard")
         if len(self.ep_info_buffer) > 0 and len(self.ep_info_buffer[0]) > 0:
-            self.logger.record("rollout/ep_rew_mean", safe_mean([ep_info["r"] for ep_info in self.ep_info_buffer]))
-            self.logger.record("rollout/ep_len_mean", safe_mean([ep_info["l"] for ep_info in self.ep_info_buffer]))
+            for k in self.ep_info_buffer[0].keys():
+                if k == "t":
+                    continue
+                if k == "r":
+                    name = "ep_rew_mean"
+                elif k == "l":
+                    name = "ep_len_mean"
+                else:
+                    name = "ep_" + k + "_mean"
+
+                self.logger.record("rollout/" + name, safe_mean([ep_info[k] for ep_info in self.ep_info_buffer]))
+            # self.logger.record("rollout/ep_rew_mean", safe_mean([ep_info["r"] for ep_info in self.ep_info_buffer]))
+            # self.logger.record("rollout/ep_len_mean", safe_mean([ep_info["l"] for ep_info in self.ep_info_buffer]))
         self.logger.record("time/fps", fps)
         self.logger.record("time/time_elapsed", int(time_elapsed), exclude="tensorboard")
         self.logger.record("time/total_timesteps", self.num_timesteps, exclude="tensorboard")
@@ -549,6 +569,7 @@ class OffPolicyAlgorithm(BaseAlgorithm):
         :return:
         """
         # Switch to eval mode (this affects batch norm / dropout)
+        print("In collect rollouts")
         self.policy.set_training_mode(False)
 
         num_collected_steps, num_collected_episodes = 0, 0
@@ -570,6 +591,7 @@ class OffPolicyAlgorithm(BaseAlgorithm):
         continue_training = True
 
         while should_collect_more_steps(train_freq, num_collected_steps, num_collected_episodes):
+
             if self.use_sde and self.sde_sample_freq > 0 and num_collected_steps % self.sde_sample_freq == 0:
                 # Sample a new noise matrix
                 self.actor.reset_noise(env.num_envs)
@@ -587,7 +609,9 @@ class OffPolicyAlgorithm(BaseAlgorithm):
             callback.update_locals(locals())
             # Only stop training if return value is False, not when it is None.
             if callback.on_step() is False:
-                return RolloutReturn(num_collected_steps * env.num_envs, num_collected_episodes, continue_training=False)
+                return RolloutReturn(
+                    num_collected_steps * env.num_envs, num_collected_episodes, continue_training=False
+                )
 
             # Retrieve reward and episode length if using Monitor wrapper
             self._update_info_buffer(infos, dones)
