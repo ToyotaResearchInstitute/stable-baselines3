@@ -7,6 +7,49 @@ from gym.spaces import Box, Discrete, MultiBinary, MultiDiscrete
 from stable_baselines3.common.type_aliases import GymObs, GymStepReturn
 
 
+class TwoStateMDP(Env):
+    def __init__(self, reward_coeff=-10, ep_length=100) -> None:
+        self.action_space = Discrete(2)
+        self.observation_space = Discrete(2)
+        self.ep_length = ep_length
+        self.current_step = 0
+        self.reward_coeff = reward_coeff
+        self.reset()
+
+    def reset(self) -> None:
+        self.current_step = 0
+        self.state = self.observation_space.sample()  # 0 or 1
+        return self.state
+
+    def step(self, action: Union[int, np.ndarray]) -> GymStepReturn:
+        reward = self._compute_reward(action)
+        self._compute_next_state(action)
+        self.current_step += 1
+        done = self.current_step >= self.ep_length
+        return self.state, reward, done, {}
+
+    def _compute_reward(self, action) -> float:
+        is_action_zero = action == 0
+        is_action_non_zero = action == 1
+        assert is_action_zero == (not is_action_non_zero)
+        # when reward_coeff is positive, then reward is positive when action == 0
+        # when reward_coeff is negative, then reward is positive when action == 1
+        reward = self.reward_coeff * (int(is_action_zero) - int(is_action_non_zero))
+        return reward
+
+    def _compute_next_state(self, action):
+        if self.state == 0:
+            if action == 0:
+                self.state = 0
+            elif action == 1:
+                self.state = 1
+        elif self.state == 1:
+            if action == 0:
+                self.state = 0
+            elif action == 1:
+                self.state = 1
+
+
 class IdentityEnv(Env):
     def __init__(self, dim: Optional[int] = None, space: Optional[Space] = None, ep_length: int = 100):
         """
