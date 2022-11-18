@@ -174,7 +174,8 @@ class OnPolicyAlgorithm(BaseAlgorithm):
                 clipped_actions = np.clip(actions, self.action_space.low, self.action_space.high)
 
             new_obs, rewards, dones, infos = env.step(clipped_actions)
-
+            # print("PPO rews", clipped_actions, rewards)
+            # print("    ")
             self.num_timesteps += env.num_envs
 
             # Give access to local variables
@@ -202,6 +203,7 @@ class OnPolicyAlgorithm(BaseAlgorithm):
                         terminal_value = self.policy.predict_values(terminal_obs)[0]
                     rewards[idx] += self.gamma * terminal_value
 
+                    print("REWARDS in buffer", rewards[idx])
             rollout_buffer.add(self._last_obs, actions, rewards, self._last_episode_starts, values, log_probs)
             self._last_obs = new_obs
             self._last_episode_starts = dones
@@ -263,11 +265,13 @@ class OnPolicyAlgorithm(BaseAlgorithm):
             self._update_current_progress_remaining(self.num_timesteps, total_timesteps)
 
             # Display training infos
+
             if log_interval is not None and iteration % log_interval == 0:
                 time_elapsed = max((time.time_ns() - self.start_time) / 1e9, sys.float_info.epsilon)
                 fps = int((self.num_timesteps - self._num_timesteps_at_start) / time_elapsed)
                 self.logger.record("time/iterations", iteration, exclude="tensorboard")
                 if len(self.ep_info_buffer) > 0 and len(self.ep_info_buffer[0]) > 0:
+
                     for k in self.ep_info_buffer[0].keys():
                         if k == "t":
                             continue
@@ -280,6 +284,10 @@ class OnPolicyAlgorithm(BaseAlgorithm):
 
                         self.logger.record(
                             "rollout/" + name, safe_mean([ep_info[k] for ep_info in self.ep_info_buffer])
+                        )
+                        self.logger.record(
+                            "rollout/ep_avg_reward_per_time_step_mean",
+                            safe_mean([float(ep_info["r"]) / ep_info["l"] for ep_info in self.ep_info_buffer]),
                         )
                     # self.logger.record(
                     #     "rollout/ep_rew_mean", safe_mean([ep_info["r"] for ep_info in self.ep_info_buffer])

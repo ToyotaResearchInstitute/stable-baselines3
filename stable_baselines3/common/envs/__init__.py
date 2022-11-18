@@ -6,5 +6,6 @@ from stable_baselines3.common.envs.identity_env import (
     IdentityEnvMultiBinary,
     IdentityEnvMultiDiscrete,
     TwoStateMDP,
+    RolloutInfoWrapper,
 )
 from stable_baselines3.common.envs.multi_input_envs import SimpleMultiObsEnv

@@ -1,16 +1,75 @@
-from typing import Optional, Union
+from typing import Optional, Union, List
 
 import numpy as np
-from gym import Env, Space
+from gym import Env, Space, Wrapper
+from gym.utils import seeding
 from gym.spaces import Box, Discrete, MultiBinary, MultiDiscrete
 
 from stable_baselines3.common.type_aliases import GymObs, GymStepReturn
+from stable_baselines3.common.logger import Logger
+
+
+class RolloutInfoWrapper(Wrapper):
+    """Add the entire episode's rewards and observations to `info` at episode end.
+
+    Whenever done=True, `info["rollouts"]` is a dict with keys "obs" and "rews", whose
+    corresponding values hold the NumPy arrays containing the raw observations and
+    rewards seen during this episode.
+    """
+
+    def __init__(self, env: Env, custom_logger: Logger = None):
+        """Builds RolloutInfoWrapper.
+
+        Args:
+            env: Environment to wrap.
+        """
+        super().__init__(env)
+        self._obs = None
+        self._rews = None
+        self._rew_components = None
+        self._custom_logger = custom_logger
+
+    def reset(self, **kwargs):
+        new_obs = super().reset()
+        self._obs = [new_obs]
+        self._rews = []
+        self._rew_components = []
+        return new_obs
+
+    def step(self, action):
+        obs, rew, done, info = self.env.step(action)
+        # print("Reward in rollout wrapper", rew, info)
+        self._obs.append(obs)
+        self._rews.append(rew)
+        if "reward_components" in info:
+            self._rew_components.append(info)  # list of dict
+
+        if done:
+            assert "rollout" not in info
+            if len(self._rew_components) > 0:
+                info["rollout"] = {"obs": np.stack(self._obs), "rews": np.stack(self._rews)}
+
+                # sum of reward components for entire episode.
+                for k in self._rew_components[0]["reward_components"].keys():
+                    info["rollout"][k] = np.sum([rc["reward_components"][k] for rc in self._rew_components])
+            else:
+                info["rollout"] = {"obs": np.stack(self._obs), "rews": np.stack(self._rews)}
+                print(info)
+            if len(self._rew_components) > 0 and self._custom_logger is not None:
+                with self._custom_logger.accumulate_means("avg_episodes"):
+                    self._custom_logger.record(
+                        "rollout/action_reward",
+                        np.sum([rc["reward_components"]["action_reward"] for rc in self._rew_components]),
+                    )
+
+        return obs, rew, done, info
 
 
 class TwoStateMDP(Env):
-    def __init__(self, reward_coeff=-10, ep_length=100) -> None:
+    def __init__(self, reward_coeff=-1, ep_length=100) -> None:
         self.action_space = Discrete(2)
-        self.observation_space = Discrete(2)
+        # self.observation_space = Discrete(2)
+        self.observation_space = Box(-1.0, 1.0, shape=(1,), dtype=np.float32)
         self.ep_length = ep_length
         self.current_step = 0
         self.reward_coeff = reward_coeff
@@ -18,36 +77,48 @@ class TwoStateMDP(Env):
 
     def reset(self) -> None:
         self.current_step = 0
-        self.state = self.observation_space.sample()  # 0 or 1
+        self.state = 0
         return self.state
 
     def step(self, action: Union[int, np.ndarray]) -> GymStepReturn:
-        reward = self._compute_reward(action)
-        self._compute_next_state(action)
+        full_action = [np.random.choice([0, 1]), action]
+        print("")
+        print("previous state", self.state)
+        self._compute_next_state(full_action)
+        reward = self._compute_reward(full_action)
         self.current_step += 1
+        print("reward", reward)
         done = self.current_step >= self.ep_length
+
         return self.state, reward, done, {}
 
-    def _compute_reward(self, action) -> float:
-        is_action_zero = action == 0
-        is_action_non_zero = action == 1
+    def _compute_reward(self, full_action) -> float:
+        is_action_zero = full_action[-1] == 0
+        is_action_non_zero = full_action[-1] == 1
         assert is_action_zero == (not is_action_non_zero)
         # when reward_coeff is positive, then reward is positive when action == 0
         # when reward_coeff is negative, then reward is positive when action == 1
         reward = self.reward_coeff * (int(is_action_zero) - int(is_action_non_zero))
         return reward
 
-    def _compute_next_state(self, action):
-        if self.state == 0:
-            if action == 0:
-                self.state = 0
-            elif action == 1:
-                self.state = 1
-        elif self.state == 1:
-            if action == 0:
-                self.state = 0
-            elif action == 1:
-                self.state = 1
+    def _compute_next_state(self, full_action):
+        distraction_action = full_action[0]
+        if distraction_action == 0:
+            self.state = 1
+        elif distraction_action == 1:
+            self.state = 0
+        print("distraction_action", full_action[0])
+        print("hmi_action", full_action[-1])
+        print("state_before alert", self.state)
+        hmi_action = full_action[-1]
+        if hmi_action == 1:
+            self.state = 0
+        print("state after alert", self.state)
+
+    def seed(self, seed: int = None) -> List[int]:
+        self.np_random, seed = seeding.np_random(seed)
+        print("print env seed", self.np_random, seed)
+        return [seed]
 
 
 class IdentityEnv(Env):

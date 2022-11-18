@@ -7,7 +7,12 @@ from gym import spaces
 from torch.nn import functional as F
 
 from stable_baselines3.common.on_policy_algorithm import OnPolicyAlgorithm
-from stable_baselines3.common.policies import ActorCriticCnnPolicy, ActorCriticPolicy, BasePolicy, MultiInputActorCriticPolicy
+from stable_baselines3.common.policies import (
+    ActorCriticCnnPolicy,
+    ActorCriticPolicy,
+    BasePolicy,
+    MultiInputActorCriticPolicy,
+)
 from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, Schedule
 from stable_baselines3.common.utils import explained_variance, get_schedule_fn
 
@@ -99,6 +104,7 @@ class PPO(OnPolicyAlgorithm):
         device: Union[th.device, str] = "auto",
         _init_setup_model: bool = True,
     ):
+        print("PPO seed and device", seed, device)
 
         super().__init__(
             policy,
@@ -169,7 +175,9 @@ class PPO(OnPolicyAlgorithm):
         self.clip_range = get_schedule_fn(self.clip_range)
         if self.clip_range_vf is not None:
             if isinstance(self.clip_range_vf, (float, int)):
-                assert self.clip_range_vf > 0, "`clip_range_vf` must be positive, " "pass `None` to deactivate vf clipping"
+                assert self.clip_range_vf > 0, (
+                    "`clip_range_vf` must be positive, " "pass `None` to deactivate vf clipping"
+                )
 
             self.clip_range_vf = get_schedule_fn(self.clip_range_vf)
 

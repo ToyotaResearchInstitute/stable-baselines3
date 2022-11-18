@@ -163,7 +163,9 @@ class VecNormalize(VecEnvWrapper):
 
         if self.training:
             self._update_reward(rewards)
+        print("BEFORE REW NORM ", rewards)
         rewards = self.normalize_reward(rewards)
+        print("AFTER NORM ", rewards)
 
         # Normalize the terminal observations
         for idx, done in enumerate(dones):
@@ -296,7 +298,5 @@ class VecNormalize(VecEnvWrapper):
 
     @property
     def ret(self) -> np.ndarray:
-        warnings.warn(
-            "`VecNormalize` `ret` attribute is deprecated. Please use `returns` instead.", DeprecationWarning
-        )
+        warnings.warn("`VecNormalize` `ret` attribute is deprecated. Please use `returns` instead.", DeprecationWarning)
         return self.returns
