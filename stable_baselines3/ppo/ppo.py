@@ -104,7 +104,7 @@ class PPO(OnPolicyAlgorithm):
         device: Union[th.device, str] = "auto",
         _init_setup_model: bool = True,
     ):
-        print("PPO seed and device", seed, device)
+        print("PPO seed and device gamma", seed, device, gamma)
 
         super().__init__(
             policy,
